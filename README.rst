@@ -206,6 +206,7 @@ Usage
      # resolved_resolutions = comma separated list of resolutions (done, fixed)
      # run_test_case = True (default value for 'run' parameter)
      # connection_error_strategy [strict|skip|ignore] Choose how to handle connection errors
+     # version_check_strategy [strict|resolved_only|smart] Choose how to handle version checking
      # return_jira_metadata = False (return Jira issue with metadata instead of boolean result)
 
    You can set the password and username fields by setting the PYTEST_JIRA_PASSWORD and PYTEST_JIRA_USERNAME
