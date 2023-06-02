@@ -127,6 +127,8 @@ the issue will be considered **unresolved**.
 
 If you specify fixed resolutions closed issues will be **unresolved** if they do not also have a **resolved** resolution.
 
+If you pass the ``--jira-skip-all`` option, all issues will be considered to be **unresolved**
+
 Fixture usage
 -------------
 
