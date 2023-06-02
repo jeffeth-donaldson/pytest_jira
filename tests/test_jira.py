@@ -1081,6 +1081,7 @@ def test_closed_nofix_nooption(testdir):
     result = testdir.runpytest(*PLUGIN_ARGS)
     result.assert_outcomes(0, 0, 1)
 
+
 def test_closed_nofix_option(testdir):
     testdir.makeconftest(CONFTEST)
     testdir.makepyfile("""
@@ -1098,6 +1099,7 @@ def test_closed_nofix_option(testdir):
     result = testdir.runpytest(*ARGS)
     result.assert_outcomes(0, 1, 0)
 
+
 def test_closed_fixed_nooption(testdir):
     testdir.makeconftest(CONFTEST)
     testdir.makepyfile("""
@@ -1109,6 +1111,7 @@ def test_closed_fixed_nooption(testdir):
     """)
     result = testdir.runpytest(*PLUGIN_ARGS)
     result.assert_outcomes(1, 0, 0)
+
 
 def test_closed_fixed_option(testdir):
     testdir.makeconftest(CONFTEST)
@@ -1127,3 +1130,22 @@ def test_closed_fixed_option(testdir):
     result = testdir.runpytest(*ARGS)
     result.assert_outcomes(1, 0, 0)
 
+
+@pytest.mark.parametrize('issue', [
+    "ORG-1412", "ORG-1382", "ORG-1510", "FAKE-1413"
+])
+def test_jira_skip_all(testdir, issue):
+    testdir.makeconftest(CONFTEST)
+    testdir.makepyfile(f"""
+        import pytest
+        @pytest.mark.jira("{issue}", run=False)
+        def test_fail():
+            assert False
+    """)
+    ARGS = (
+        '--jira',
+        '--jira-url', PUBLIC_JIRA_SERVER,
+        '--jira-skip-all'
+    )
+    result = testdir.runpytest(*ARGS)
+    result.assert_outcomes(0, 1, 0)

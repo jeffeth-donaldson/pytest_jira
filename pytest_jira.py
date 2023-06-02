@@ -45,7 +45,8 @@ class JiraHooks(object):
             run_test_case=DEFAULT_RUN_TEST_CASE,
             strict_xfail=False,
             connection_error_strategy=None,
-            return_jira_metadata=False
+            return_jira_metadata=False,
+            skip_all=False,
     ):
         self.conn = connection
         self.mark = marker
@@ -66,12 +67,15 @@ class JiraHooks(object):
 
         self.strict_xfail = strict_xfail
         self.return_jira_metadata = return_jira_metadata
+        self.skip_all = skip_all
 
     def is_issue_resolved(self, issue_id):
         """
         Returns whether the provided issue ID is resolved (True|False).  Will
         cache issues to speed up subsequent calls for the same issue.
         """
+        if self.skip_all:
+            return False
         # Access Jira issue (may be cached)
         if issue_id not in self.issue_cache:
             try:
@@ -90,7 +94,11 @@ class JiraHooks(object):
         # Skip test if issue remains unresolved
         if self.issue_cache[issue_id] is None:
             return True
-        if self.issue_cache[issue_id]['status'] in self.resolved_statuses and (len(self.resolved_resolutions) == 0 or self.issue_cache[issue_id]['resolution'] in self.resolved_resolutions):
+        if self.issue_cache[issue_id]['status'] in self.resolved_statuses and (
+            len(self.resolved_resolutions) == 0 or
+            self.issue_cache[issue_id]['resolution'] in
+            self.resolved_resolutions
+        ):
             return self.fixed_in_version(issue_id)
         else:
             return not self.is_affected(issue_id)
@@ -265,7 +273,8 @@ class JiraSiteConnection(object):
                     v['name'] for v in field.get('fixVersions', set())
                 ),
                 'status': field['status']['name'].lower(),
-                'resolution': field['resolution']['name'].lower() if field['resolution'] else field['resolution'],
+                'resolution': field['resolution']['name'].lower() if
+                field['resolution'] else None,
             }
 
     def get_url(self):
@@ -460,8 +469,11 @@ def pytest_addoption(parser):
     group.addoption('--jira-resolved-resolutions',
                     action='store',
                     dest='jira_resolved_resolutions',
-                    default=_get_value(config, 'DEFAULT', 'resolved_resolutions'),
-                    help='Comma separated list of resolved resolutions (done, fixed)'
+                    default=_get_value(
+                        config, 'DEFAULT', 'resolved_resolutions'
+                    ),
+                    help='Comma separated list of resolved resolutions (done, '
+                    'fixed)'
                     )
     group.addoption('--jira-do-not-run-test-case',
                     action='store_false',
@@ -489,8 +501,17 @@ def pytest_addoption(parser):
     group.addoption('--jira-return-metadata',
                     action='store_true',
                     dest='return_jira_metadata',
-                    default=_get_value(config, 'DEFAULT', 'return_jira_metadata'),
+                    default=_get_value(
+                        config, 'DEFAULT', 'return_jira_metadata'
+                    ),
                     help='If set, will return Jira issue with ticket metadata'
+                    )
+    group.addoption('--jira-skip-all',
+                    action='store_true',
+                    dest='jira_skip_all',
+                    default=_get_bool(config, 'DEFAULT', 'skip_all'),
+                    help='If set, will skip all tests marked with any Jira '
+                    'issue'
                     )
 
 
@@ -555,7 +576,8 @@ def pytest_configure(config):
             config.getvalue('jira_run_test_case'),
             config.getini("xfail_strict"),
             config.getvalue('jira_connection_error_strategy'),
-            config.getvalue('return_jira_metadata')
+            config.getvalue('return_jira_metadata'),
+            config.getvalue('jira_skip_all'),
         )
         ok = config.pluginmanager.register(jira_plugin, PLUGIN_NAME)
         assert ok
