@@ -133,11 +133,9 @@ Version Check Method
 Setting the ``version_check_strategy`` parameter in the config file or with the ``--jira-product-version-strategy`` commandline option,
 determines the behavior when ``version`` is specified.
 
-- ``STRICT`` : open issues will be **unresolved** only if they also affects your version.
-Even when the issue is closed, but your version was affected and it was not fixed for your version,
-the issue will be considered **unresolved**.
+- ``STRICT`` : open issues will be **unresolved** only if they also affects your version. Even when the issue is closed, but your version was affected and it was not fixed for your version, the issue will be considered **unresolved**.
 - ``RESOLVED_ONLY`` : all open issues will be **unresolved** and any closed issues not marked fixed for your version will be **unresolved**
-- ``GUESS`` : _Experimental_! Attempts to compare your version with the fixed version. If your version appears to be newer than the fixed version, the issue will be **resolved** if it is older, than it will be **unresolved**
+- ``SMART`` : *Experimental!* Attempts to compare your version with the fixed version. If your version appears to be newer than the fixed version, the issue will be **resolved** if it is older, than it will be **unresolved**
 
 Fixture usage
 -------------

@@ -61,8 +61,8 @@ FAKE_ISSUES = {
     },
     "ORG-1516": {
         "components": set(['component2', 'component3']),
-        "versions": set(["foo-0.1", "foo-0.2"]),
-        "fixed_versions": set(["foo-0.2"]),
+        "versions": set(["2023.01", "2023.02"]),
+        "fixed_versions": set(["2023.02"]),
         "status": "closed",
         "resolution": "done"
     },
@@ -1081,6 +1081,7 @@ def test_closed_nofix_nooption(testdir):
     result = testdir.runpytest(*PLUGIN_ARGS)
     result.assert_outcomes(0, 0, 1)
 
+
 def test_closed_nofix_option(testdir):
     testdir.makeconftest(CONFTEST)
     testdir.makepyfile("""
@@ -1098,6 +1099,7 @@ def test_closed_nofix_option(testdir):
     result = testdir.runpytest(*ARGS)
     result.assert_outcomes(0, 1, 0)
 
+
 def test_closed_fixed_nooption(testdir):
     testdir.makeconftest(CONFTEST)
     testdir.makepyfile("""
@@ -1109,6 +1111,7 @@ def test_closed_fixed_nooption(testdir):
     """)
     result = testdir.runpytest(*PLUGIN_ARGS)
     result.assert_outcomes(1, 0, 0)
+
 
 def test_closed_fixed_option(testdir):
     testdir.makeconftest(CONFTEST)
@@ -1127,3 +1130,113 @@ def test_closed_fixed_option(testdir):
     result = testdir.runpytest(*ARGS)
     result.assert_outcomes(1, 0, 0)
 
+
+@pytest.mark.parametrize("version_strategy, passed, skipped, failed, error", [
+    ('strict', 0, 0, 1, 0),
+    ('resolved_only', 0, 0, 1, 0),
+    ('smart', 0, 1, 0, 0),
+])
+def test_jira_version_strategy_closed_pre(
+        testdir,
+        version_strategy,
+        passed,
+        skipped,
+        failed,
+        error
+):
+    testdir.makeconftest(CONFTEST)
+    testdir.makepyfile("""
+        import pytest
+
+        @pytest.mark.jira("ORG-1516", run=False)
+        def test_pass():
+            assert False
+    """)
+    ARGS = (
+        '--jira',
+        '--jira-url', PUBLIC_JIRA_SERVER,
+        '--jira-product-version', '2022.09',
+        '--jira-product-version-strategy', version_strategy
+    )
+    result = testdir.runpytest(*ARGS)
+    assert_outcomes(
+        result,
+        passed=passed,
+        skipped=skipped,
+        failed=failed,
+        error=error
+    )
+
+
+@pytest.mark.parametrize("version_strategy, passed, skipped, failed, error", [
+    ('strict', 0, 0, 1, 0),
+    ('resolved_only', 0, 0, 1, 0),
+    ('smart', 0, 0, 1, 0),
+])
+def test_jira_version_strategy_closed_post(
+        testdir,
+        version_strategy,
+        passed,
+        skipped,
+        failed,
+        error
+):
+    testdir.makeconftest(CONFTEST)
+    testdir.makepyfile("""
+        import pytest
+
+        @pytest.mark.jira("ORG-1516", run=False)
+        def test_pass():
+            assert False
+    """)
+    ARGS = (
+        '--jira',
+        '--jira-url', PUBLIC_JIRA_SERVER,
+        '--jira-product-version', '2023.05',
+        '--jira-product-version-strategy', version_strategy
+    )
+    result = testdir.runpytest(*ARGS)
+    assert_outcomes(
+        result,
+        passed=passed,
+        skipped=skipped,
+        failed=failed,
+        error=error
+    )
+
+
+@pytest.mark.parametrize("version_strategy, passed, skipped, failed, error", [
+    ('strict', 0, 0, 1, 0),
+    ('resolved_only', 0, 1, 0, 0),
+    ('smart', 0, 1, 0, 0),
+])
+def test_jira_version_strategy_open(
+        testdir,
+        version_strategy,
+        passed,
+        skipped,
+        failed,
+        error
+):
+    testdir.makeconftest(CONFTEST)
+    testdir.makepyfile("""
+        import pytest
+
+        @pytest.mark.jira("ORG-1511", run=False)
+        def test_pass():
+            assert False
+    """)
+    ARGS = (
+        '--jira',
+        '--jira-url', PUBLIC_JIRA_SERVER,
+        '--jira-product-version', 'foo-0.0',
+        '--jira-product-version-strategy', version_strategy
+    )
+    result = testdir.runpytest(*ARGS)
+    assert_outcomes(
+        result,
+        passed=passed,
+        skipped=skipped,
+        failed=failed,
+        error=error
+    )

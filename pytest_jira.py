@@ -11,7 +11,7 @@ Author: James Laska
 import os
 import re
 import sys
-from packaging.version import Version
+from packaging.version import Version, parse
 from json import JSONDecodeError
 
 import pytest
@@ -23,6 +23,7 @@ from issue_model import JiraIssue, JiraIssueSchema
 
 DEFAULT_RESOLVE_STATUSES = 'closed', 'resolved'
 DEFAULT_RUN_TEST_CASE = True
+DEFAULT_PRODUCT_VERSION_STRATEGY = 'strict'
 CONNECTION_SKIP_MESSAGE = 'Jira connection issue, skipping test: %s'
 CONNECTION_ERROR_FLAG_NAME = '--jira-connection-error-strategy'
 STRICT = 'strict'
@@ -45,6 +46,7 @@ class JiraHooks(object):
             run_test_case=DEFAULT_RUN_TEST_CASE,
             strict_xfail=False,
             connection_error_strategy=None,
+            product_version_strategy=None,
             return_jira_metadata=False
     ):
         self.conn = connection
@@ -59,6 +61,7 @@ class JiraHooks(object):
             self.resolved_resolutions = resolved_resolutions
         else:
             self.resolved_resolutions = []
+        self.product_version_strategy = product_version_strategy
         self.run_test_case = run_test_case
         self.connection_error_strategy = connection_error_strategy
         # Speed up JIRA lookups for duplicate issues
@@ -90,7 +93,11 @@ class JiraHooks(object):
         # Skip test if issue remains unresolved
         if self.issue_cache[issue_id] is None:
             return True
-        if self.issue_cache[issue_id]['status'] in self.resolved_statuses and (len(self.resolved_resolutions) == 0 or self.issue_cache[issue_id]['resolution'] in self.resolved_resolutions):
+        if self.issue_cache[issue_id]['status'] in self.resolved_statuses and (
+            len(self.resolved_resolutions) == 0 or
+            self.issue_cache[issue_id]['resolution'] in
+            self.resolved_resolutions
+        ):
             return self.fixed_in_version(issue_id)
         else:
             return not self.is_affected(issue_id)
@@ -148,9 +155,14 @@ class JiraHooks(object):
         """
         if not self.version:
             return True
-        affected = self.issue_cache[issue_id].get('versions')
-        fixed = self.issue_cache[issue_id].get('fixed_versions')
-        return self.version not in (affected - fixed)
+        elif self.product_version_strategy in ('strict', 'resolved_only'):
+            affected = self.issue_cache[issue_id].get('versions')
+            fixed = self.issue_cache[issue_id].get('fixed_versions')
+            return self.version not in (affected - fixed)
+        elif self.product_version_strategy == 'smart':
+            fixed = self.issue_cache[issue_id].get('fixed_versions')
+            latest_fixed = max([parse(x) for x in fixed])
+            return parse(self.version) >= latest_fixed
 
     def is_affected(self, issue_id):
         """
@@ -165,10 +177,15 @@ class JiraHooks(object):
         )
 
     def _affected_version(self, issue_id):
-        affected = self.issue_cache[issue_id].get('versions')
-        if not self.version or not affected:
+        if self.product_version_strategy == 'strict':
+            affected = self.issue_cache[issue_id].get('versions')
+            if not self.version or not affected:
+                return True
+            return self.version in affected
+        elif self.product_version_strategy == 'resolved_only':
             return True
-        return self.version in affected
+        elif self.product_version_strategy == 'smart':
+            return True
 
     def _affected_components(self, issue_id):
         affected = self.issue_cache[issue_id].get('components')
@@ -265,7 +282,8 @@ class JiraSiteConnection(object):
                     v['name'] for v in field.get('fixVersions', set())
                 ),
                 'status': field['status']['name'].lower(),
-                'resolution': field['resolution']['name'].lower() if field['resolution'] else field['resolution'],
+                'resolution': field['resolution']['name'].lower() if
+                field['resolution'] else field['resolution'],
             }
 
     def get_url(self):
@@ -421,6 +439,35 @@ def pytest_addoption(parser):
                     default=_get_value(config, 'DEFAULT', 'version'),
                     help='Used version'
                     )
+    group.addoption('--jira-product-version-strategy',
+                    action='store',
+                    dest='jira_product_version_strategy',
+                    default=_get_value(
+                        config,
+                        'DEFAULT',
+                        'version_check_strategy',
+                        DEFAULT_PRODUCT_VERSION_STRATEGY
+                        ),
+                    choices=['strict', 'resolved_only', 'smart'],
+                    help="""Action when --jira-product-version is specified
+                    strict - open issues will be unresolved 
+                        only if they also affects your version.
+                        Even when the issue is closed,
+                        but your version was affected and it was not 
+                        fixed for your version,
+                        the issue will be considered unresolved.
+
+                    resolved_only - all open issues will be unresolved
+                        and any closed issues not marked fixed for 
+                        your version will be unresolved
+                        
+                    smart - *Experimental!* Attempts to compare your 
+                        version with the fixed version.
+                        If your version appears to be newer than 
+                        the fixed version, the issue will be resolved
+                        if it is older, than it will be unresolved
+                        """,
+                    )
     group.addoption('--jira-marker-strategy',
                     action='store',
                     dest='jira_marker_strategy',
@@ -460,8 +507,10 @@ def pytest_addoption(parser):
     group.addoption('--jira-resolved-resolutions',
                     action='store',
                     dest='jira_resolved_resolutions',
-                    default=_get_value(config, 'DEFAULT', 'resolved_resolutions'),
-                    help='Comma separated list of resolved resolutions (done, fixed)'
+                    default=_get_value(config, 'DEFAULT',
+                                       'resolved_resolutions'),
+                    help='Comma separated list of resolved resolutions (done, '
+                         'fixed)'
                     )
     group.addoption('--jira-do-not-run-test-case',
                     action='store_false',
@@ -489,7 +538,8 @@ def pytest_addoption(parser):
     group.addoption('--jira-return-metadata',
                     action='store_true',
                     dest='return_jira_metadata',
-                    default=_get_value(config, 'DEFAULT', 'return_jira_metadata'),
+                    default=_get_value(config, 'DEFAULT',
+                                       'return_jira_metadata'),
                     help='If set, will return Jira issue with ticket metadata'
                     )
 
@@ -555,6 +605,7 @@ def pytest_configure(config):
             config.getvalue('jira_run_test_case'),
             config.getini("xfail_strict"),
             config.getvalue('jira_connection_error_strategy'),
+            config.getvalue('jira_product_version_strategy'),
             config.getvalue('return_jira_metadata')
         )
         ok = config.pluginmanager.register(jira_plugin, PLUGIN_NAME)
